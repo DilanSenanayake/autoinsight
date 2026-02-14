@@ -3,7 +3,10 @@
     {
       "src": "api/index.py",
       "use": "@ardnt/vercel-python-wsgi",
-      "config": { "maxLambdaSize": "50mb" }
+      "config": {
+        "runtime": "python3.11",
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "routes": [
