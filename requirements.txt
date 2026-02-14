@@ -1,0 +1,7 @@
+Django>=4.2,<5
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+groq>=0.4.0
+python-dotenv>=1.0.0
+cloudscraper>=1.2.71
+whitenoise>=6.6.0

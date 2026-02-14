@@ -1,0 +1,73 @@
+{% extends "evaluator/base.html" %}
+{% block title %}Scraped data – AutoInsight{% endblock %}
+
+{% block content %}
+  <p class="filters-summary">
+    Filters: {% if filters.make %}{{ filters.make }}{% else %}all{% endif %} /
+    {% if filters.model %}{{ filters.model }}{% else %}all{% endif %} /
+    {% if filters.location %}{{ filters.location }}{% else %}all{% endif %}
+    | Year {{ filters.min_year|default:"—" }}–{{ filters.max_year|default:"—" }}
+    | Price {{ filters.min_price|default:"—" }}–{{ filters.max_price|default:"—" }} LKR.
+    <a href="{% url 'evaluator:index' %}" class="btn btn-secondary" style="margin-left:1rem;">Change filters</a>
+  </p>
+  {% if search_url %}
+  <p class="filters-summary">
+    <a href="{{ search_url }}" target="_blank" rel="noopener">View this search on Riyasewana ↗</a>
+  </p>
+  {% endif %}
+
+  <div class="card">
+    <h2 style="margin-top:0;">Scraped data (preview)</h2>
+    <p class="muted">AI ranking is temporarily disabled. {{ listings|length }} vehicle(s) scraped. Detail-page data (make, model, gear, fuel, contact, details) is fetched from each vehicle link.</p>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Price (LKR)</th>
+            <th>Year</th>
+            <th>Mileage (km)</th>
+            <th>Make</th>
+            <th>Model</th>
+            <th>Gear</th>
+            <th>Fuel</th>
+            <th>Contact</th>
+            <th>Link</th>
+            <th>Details (snippet)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in listings %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ item.name|default:"—" }}</td>
+              <td>{{ item.price|default:"—" }}</td>
+              <td>{{ item.year|default:"—" }}</td>
+              <td>{{ item.mileage|default:"—" }}</td>
+              <td>{{ item.make|default:"—" }}</td>
+              <td>{{ item.model|default:"—" }}</td>
+              <td>{{ item.gear|default:"—" }}</td>
+              <td>{{ item.fuel_type|default:"—" }}</td>
+              <td>{{ item.contact|default:"—" }}</td>
+              <td>
+                {% if item.url %}
+                  <a href="{{ item.url }}" target="_blank" rel="noopener">View</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ item.details|default:item.description|default:'' }}">{{ item.details|default:item.description|truncatewords:12|default:"—" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="12">No listings scraped.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p>
+    <a href="{% url 'evaluator:index' %}" class="btn">New search</a>
+  </p>
+{% endblock %}

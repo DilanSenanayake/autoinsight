@@ -1,0 +1,85 @@
+{% extends "evaluator/base.html" %}
+{% block title %}Search – AutoInsight{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Search filters</h2>
+    <p class="muted" style="margin-bottom:1rem;">Set your criteria. We fetch vehicles from Riyasewana, then <strong>rank them using AI</strong> (value for money, condition, features, ownership experience, maintenance) and show the Top 10 with the best picks highlighted.</p>
+    <form method="post" action="{% url 'evaluator:index' %}">
+      {% csrf_token %}
+      <div class="form-grid">
+        <div class="form-section">
+          <h3 class="form-section-title">Vehicle</h3>
+          <div class="form-row">
+            <div>
+              <label for="id_make">Make</label>
+              <input type="text" id="id_make" name="make" value="{{ form_defaults.make }}" placeholder="e.g. toyota">
+            </div>
+            <div>
+              <label for="id_model">Model</label>
+              <input type="text" id="id_model" name="model" value="{{ form_defaults.model }}" placeholder="e.g. axio">
+            </div>
+          </div>
+        </div>
+        <div class="form-section">
+          <h3 class="form-section-title">Location</h3>
+          <div class="form-row">
+            <div>
+              <label for="id_location">Location</label>
+              <input type="text" id="id_location" name="location" value="{{ form_defaults.location }}" placeholder="e.g. colombo">
+            </div>
+          </div>
+        </div>
+        <div class="form-section">
+          <h3 class="form-section-title">Year &amp; price</h3>
+          <div class="form-row form-row-4">
+            <div>
+              <label for="id_min_year">Min year</label>
+              <input type="text" id="id_min_year" name="min_year" value="{{ form_defaults.min_year }}" placeholder="e.g. 2010">
+            </div>
+            <div>
+              <label for="id_max_year">Max year</label>
+              <input type="text" id="id_max_year" name="max_year" value="{{ form_defaults.max_year }}" placeholder="e.g. 2020">
+            </div>
+            <div>
+              <label for="id_min_price">Min price (LKR)</label>
+              <input type="text" id="id_min_price" name="min_price" value="{{ form_defaults.min_price }}" placeholder="e.g. 7500000">
+            </div>
+            <div>
+              <label for="id_max_price">Max price (LKR)</label>
+              <input type="text" id="id_max_price" name="max_price" value="{{ form_defaults.max_price }}" placeholder="e.g. 8200000">
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="form-actions">
+        <button type="submit">Rank with AI</button>
+      </p>
+    </form>
+  </div>
+{% endblock %}
+
+{% block extra_css %}
+  <style>
+    .form-section-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent-light);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.75rem 0;
+    }
+    .form-section { margin-bottom: 1.5rem; }
+    .form-section:last-of-type { margin-bottom: 0; }
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .form-row-4 {
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+    .form-actions { margin: 1.5rem 0 0 0; }
+    .form-actions button { min-width: 160px; }
+  </style>
+{% endblock %}

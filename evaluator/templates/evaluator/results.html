@@ -1,0 +1,81 @@
+{% extends "evaluator/base.html" %}
+{% block title %}Results – AutoInsight{% endblock %}
+
+{% block content %}
+  <p class="filters-summary">
+    Filters: {% if filters.make %}{{ filters.make }}{% else %}all{% endif %} /
+    {% if filters.model %}{{ filters.model }}{% else %}all{% endif %} /
+    {% if filters.location %}{{ filters.location }}{% else %}all{% endif %}
+    | Year {{ filters.min_year|default:"—" }}–{{ filters.max_year|default:"—" }}
+    | Price {{ filters.min_price|default:"—" }}–{{ filters.max_price|default:"—" }} LKR.
+    <a href="{% url 'evaluator:index' %}" class="btn btn-secondary">Change filters</a>
+  </p>
+  {% if search_url %}
+  <p class="filters-summary">
+    <a href="{{ search_url }}" target="_blank" rel="noopener">View this search on Riyasewana ↗</a>
+  </p>
+  {% endif %}
+
+  <div class="card">
+    <div class="results-header">
+      <h2>Top 10 vehicles</h2>
+      <span class="badge badge-ai">Ranked by AI</span>
+    </div>
+    <p class="muted">Results are ranked using AI based on overall value for money, condition & reliability, features & specifications, ownership experience, and maintenance costs. Top 3 are highlighted.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name / Model</th>
+            <th>Price (LKR)</th>
+            <th>Year</th>
+            <th>Mileage (km)</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in top_10 %}
+            <tr class="{% if forloop.counter == 1 %}rank-1{% elif forloop.counter <= 3 %}best{% endif %}">
+              <td>
+                {% if forloop.counter == 1 %}🥇{% elif forloop.counter == 2 %}🥈{% elif forloop.counter == 3 %}🥉{% else %}{{ forloop.counter }}{% endif %}
+              </td>
+              <td>
+                {% if entry.vehicle.url %}
+                  <a href="{{ entry.vehicle.url }}" target="_blank" rel="noopener">{{ entry.vehicle.name|default:"—" }}</a>
+                {% else %}
+                  {{ entry.vehicle.name|default:"—" }}
+                {% endif %}
+              </td>
+              <td>{{ entry.vehicle.price|default:"—" }}</td>
+              <td>{{ entry.vehicle.year|default:"—" }}</td>
+              <td>{{ entry.vehicle.mileage|default:"—" }}</td>
+              <td class="desc-cell">{{ entry.vehicle.description|default:"—"|truncatewords:20 }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6">No vehicles in top 10.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p>
+    <a href="{% url 'evaluator:index' %}" class="btn">New search</a>
+  </p>
+{% endblock %}
+
+{% block extra_css %}
+  <style>
+    .results-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.25rem;
+    }
+    .results-header h2 { margin: 0; }
+    .table-wrap { overflow-x: auto; margin-top: 1rem; }
+    .desc-cell { max-width: 280px; }
+  </style>
+{% endblock %}

@@ -1,0 +1,16 @@
+# Reduce serverless bundle size
+.git
+.env
+.env.*
+*.pyc
+__pycache__
+.venv
+venv
+*.sqlite3
+db.sqlite3
+staticfiles
+.pytest_cache
+.coverage
+htmlcov
+*.md
+!README.md
