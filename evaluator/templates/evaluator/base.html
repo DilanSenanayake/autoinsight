@@ -4,6 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AutoInsight – AI-Powered Vehicle Ranking{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}AI-powered vehicle ranking from Riyasewana. Set your filters, we fetch listings and rank the top picks using AI based on value, condition, features, and ownership experience.{% endblock %}">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{% block og_title %}AutoInsight – AI-Powered Vehicle Ranking{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}AI-powered vehicle ranking from Riyasewana. Set your filters, we fetch listings and rank the top picks using AI based on value, condition, features, and ownership experience.{% endblock %}">
+  {% if request.build_absolute_uri %}<meta property="og:url" content="{{ request.build_absolute_uri }}">{% endif %}
+  <meta property="og:site_name" content="AutoInsight">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{% block twitter_title %}AutoInsight – AI-Powered Vehicle Ranking{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}AI-powered vehicle ranking from Riyasewana. Set your filters, we fetch listings and rank the top picks using AI.{% endblock %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
