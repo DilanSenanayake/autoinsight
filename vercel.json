@@ -2,7 +2,7 @@
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@ardnt/vercel-python-wsgi",
+      "use": "@vercel/python",
       "config": {
         "runtime": "python3.11",
         "maxLambdaSize": "50mb"
