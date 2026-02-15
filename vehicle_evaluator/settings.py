@@ -101,3 +101,61 @@ else:
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = os.environ.get('VERCEL') == '1'
+
+# Logging configuration for vehicle scraper and ranking
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {name} {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+        'simple': {
+            'format': '{levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+            'level': 'INFO',
+        },
+    },
+    'loggers': {
+        'evaluator.scraper': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'evaluator.ranking': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'evaluator.views': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Only add file handler for local development (not on Vercel)
+if not os.environ.get('VERCEL'):
+    _logs_dir = BASE_DIR / 'logs'
+    _logs_dir.mkdir(exist_ok=True)
+    
+    file_handler = {
+        'class': 'logging.FileHandler',
+        'filename': _logs_dir / 'scraper.log',
+        'formatter': 'verbose',
+        'level': 'INFO',
+    }
+    LOGGING['handlers']['file'] = file_handler
+    
+    # Add file handler to all loggers for local development
+    for logger_name in ['evaluator.scraper', 'evaluator.ranking', 'evaluator.views']:
+        LOGGING['loggers'][logger_name]['handlers'].append('file')

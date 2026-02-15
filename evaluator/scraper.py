@@ -3,6 +3,7 @@ Riyasewana scraper: fetch and filter vehicle listings.
 URL pattern: /search/cars/{make}/{model}/{location}/{min_year}-{max_year}/price-{min_price}-{max_price}
 """
 import datetime
+import time
 import re
 import logging
 from urllib.parse import urljoin
@@ -100,12 +101,14 @@ def _make_search_url(
 def get_search_url(make=None, model=None, location=None, min_year=None, max_year=None, min_price=None, max_price=None):
     """Build the Riyasewana search URL for the given filters (page 1). For display/link on results."""
     try:
-        return _make_search_url(
+        url = _make_search_url(
             make=make, model=model, location=location,
             min_year=min_year, max_year=max_year,
             min_price=min_price, max_price=max_price,
             page=1,
         )
+        logger.debug('Built display search URL: %s', url)
+        return url
     except Exception as e:
         logger.warning('Error building display search URL: %s', e)
         # Return base search URL as fallback
@@ -150,6 +153,7 @@ def _stage2_fetch_detail_page(url):
     url = str(url).strip()
     try:
         resp = SESSION.get(url, timeout=15, cookies=SESSION.cookies)
+        logger.debug('Detail page response - status: %d, size: %d bytes', resp.status_code, len(resp.text))
         resp.raise_for_status()
         return BeautifulSoup(resp.text, 'html.parser')
     except requests.Timeout as e:
@@ -298,6 +302,10 @@ def _stage2_collect_vehicles(vehicle_links, limit=2):
             if not vehicle.get('name') and name_fallback:
                 vehicle['name'] = name_fallback
             results.append(vehicle)
+            
+            # Add small delay between detail page fetches to avoid rate limiting
+            if i < len(vehicle_links) - 1:  # Don't delay after last vehicle
+                time.sleep(0.5)  # 0.5 seconds between detail pages
         except Exception as e:
             error_msg = f'Failed to collect vehicle {i} ({name_fallback or url}): {str(e)}'
             logger.warning(error_msg)
@@ -333,9 +341,17 @@ def fetch_listings(
     """
     MAX_RESULTS = 20
     
+    # Log the search filters
+    logger.info('Starting vehicle search with filters: make=%s, model=%s, location=%s, year=%s-%s, price=%s-%s, max_pages=%d',
+                make or 'any', model or 'any', location or 'any', 
+                min_year or '—', max_year or '—',
+                min_price or '—', max_price or '—',
+                max_pages)
+    
     # Visit homepage first to get cookies
     try:
         SESSION.get(BASE_URL, timeout=10, cookies=SESSION.cookies)
+        logger.debug('Successfully connected to %s to get cookies', BASE_URL)
     except requests.Timeout:
         raise RuntimeError(f'Timeout while connecting to {BASE_URL}. Website may be slow or unreachable.')
     except requests.ConnectionError:
@@ -361,7 +377,9 @@ def fetch_listings(
                 max_price=max_price,
                 page=page,
             )
+            logger.info('Scraping page %d from Riyasewana: %s', page, search_url)
             resp = SESSION.get(search_url, timeout=15, cookies=SESSION.cookies)
+            logger.debug('Response status: %d, content length: %d bytes', resp.status_code, len(resp.text))
             resp.raise_for_status()
         except requests.Timeout:
             page_error = f'Timeout on page {page}'
@@ -390,8 +408,17 @@ def fetch_listings(
             soup = BeautifulSoup(resp.text, 'html.parser')
             cards = _extract_cards(soup)
             if not cards:
-                logger.info('No cards found on page %d', page)
+                # Log HTML sample to debug why no cards found
+                page_title = soup.find('title')
+                page_title_text = page_title.get_text() if page_title else 'No title'
+                html_sample = resp.text[:500] if len(resp.text) > 500 else resp.text
+                logger.warning('No cards found on page %d. Page title: %s. HTML sample: %s...', 
+                              page, page_title_text, html_sample[:200])
+                logger.info('Total vehicle links collected before stopping: %d', len(vehicle_links))
                 break
+            
+            logger.debug('Found %d cards on page %d', len(cards), page)
+            links_before = len(vehicle_links)
             
             for card in cards:
                 if len(vehicle_links) >= MAX_RESULTS:
@@ -399,6 +426,15 @@ def fetch_listings(
                 entry = _extract_link_from_card(card)
                 if entry and entry.get('url'):
                     vehicle_links.append(entry)
+            
+            links_added = len(vehicle_links) - links_before
+            logger.info('Page %d: extracted %d valid vehicle links (total so far: %d)', page, links_added, len(vehicle_links))
+            
+            # Add delay between page requests to avoid rate limiting
+            if page < max_pages and len(vehicle_links) < MAX_RESULTS:
+                delay = 2  # 2 seconds between pages
+                logger.debug('Waiting %d seconds before next page to avoid rate limiting...', delay)
+                time.sleep(delay)
         except Exception as e:
             page_error = f'Error parsing page {page}: {str(e)}'
             logger.exception(page_error)
@@ -406,16 +442,26 @@ def fetch_listings(
             continue
 
     if not vehicle_links:
+        # No vehicles found in Stage 1 - this is normal, just return empty
         if stage1_errors:
-            error_summary = '. '.join(stage1_errors[:3])
-            raise RuntimeError(f'No vehicles found. Fetch errors: {error_summary}')
+            logger.warning('Stage 1 failed: No vehicle links found. Errors encountered: %s', 
+                          '; '.join(stage1_errors[:3]))
         else:
-            raise RuntimeError(f'No vehicles found matching filters for "{make or "any"}" {model or "model"} {location or "location"}')
+            logger.warning('Stage 1 complete: No vehicles found matching filters make=%s, model=%s, location=%s, year=%s-%s, price=%s-%s',
+                          make or 'any', model or 'any', location or 'any',
+                          min_year or '—', max_year or '—',
+                          min_price or '—', max_price or '—')
+        return []
 
     # ---------- Stage 2: fetch each vehicle's detail page and collect full data (all stage 1 results) ----------
+    logger.info('Stage 1 complete: found %d vehicle links. Starting Stage 2 to fetch details...', len(vehicle_links))
     all_listings = _stage2_collect_vehicles(vehicle_links, limit=MAX_RESULTS)
     
-    if not all_listings:
-        raise RuntimeError(f'Found {len(vehicle_links)} vehicle links but failed to fetch detail pages. Website content may have changed.')
+    # Log final summary
+    logger.info('Search complete: collected %d vehicles with full details', len(all_listings))
+    if all_listings:
+        logger.debug('Sample vehicles: %s', ', '.join([v.get('name', 'Unknown') for v in all_listings[:3]]))
     
+    # Return what we found, even if it's partial (some links may have failed to fetch details)
+    # Empty result is normal and handled gracefully by view
     return all_listings
