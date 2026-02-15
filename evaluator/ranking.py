@@ -14,26 +14,35 @@ def _get_client():
     """Lazy Groq client."""
     try:
         from groq import Groq
-    except ImportError:
-        raise ImportError('Install groq: pip install groq')
-    key = getattr(settings, 'GROQ_API_KEY', None) or ''
-    if not key:
-        raise ValueError('GROQ_API_KEY is not set in environment or Django settings.')
-    return Groq(api_key=key)
+        key = getattr(settings, 'GROQ_API_KEY', None) or ''
+        if not key:
+            raise ValueError('GROQ_API_KEY is not set in environment or Django settings.')
+        return Groq(api_key=key)
+    except ImportError as e:
+        raise RuntimeError('Groq library not installed. Please install with: pip install groq') from e
+    except ValueError as e:
+        raise RuntimeError(f'Configuration error: {str(e)}') from e
+    except Exception as e:
+        raise RuntimeError(f'Failed to initialize Groq client: {str(e)}') from e
 
 
 def _vehicle_text(vehicle: dict) -> str:
     """Build a short text description for the LLM."""
-    parts = [
-        f"Name/Model: {vehicle.get('name') or 'N/A'}",
-        f"Price (LKR): {vehicle.get('price') or 'N/A'}",
-        f"Mileage (km): {vehicle.get('mileage') or 'N/A'}",
-        f"Year: {vehicle.get('year') or 'N/A'}",
-    ]
-    desc = (vehicle.get('description') or '')[:800]
-    if desc:
-        parts.append(f"Description/Features: {desc}")
-    return '\n'.join(parts)
+    try:
+        parts = [
+            f"Name/Model: {vehicle.get('name') or 'N/A'}",
+            f"Price (LKR): {vehicle.get('price') or 'N/A'}",
+            f"Mileage (km): {vehicle.get('mileage') or 'N/A'}",
+            f"Year: {vehicle.get('year') or 'N/A'}",
+        ]
+        desc = (vehicle.get('description') or '')[:800]
+        if desc:
+            parts.append(f"Description/Features: {desc}")
+        return '\n'.join(parts)
+    except Exception as e:
+        logger.warning('Error formatting vehicle text for LLM: %s', e)
+        # Return basic vehicle info as fallback
+        return f"Vehicle: {vehicle.get('name', 'Unknown')}"
 
 
 def rank_vehicles_with_llm(vehicles: list[dict], model: str = 'llama-3.3-70b-versatile') -> list[dict]:
@@ -46,6 +55,9 @@ def rank_vehicles_with_llm(vehicles: list[dict], model: str = 'llama-3.3-70b-ver
 
     Returns:
         list of top 10 vehicles (same structure as input, in ranked order)
+    
+    Raises:
+        Exception: If API key is not set, Groq library not installed, or API request fails
     """
     if not vehicles:
         return []
@@ -57,8 +69,16 @@ def rank_vehicles_with_llm(vehicles: list[dict], model: str = 'llama-3.3-70b-ver
     # Format vehicles for LLM
     vehicle_lines = []
     for i, vehicle in enumerate(vehicles):
-        vehicle_text = _vehicle_text(vehicle)
-        vehicle_lines.append(f"[Index {i}]\n{vehicle_text}")
+        try:
+            vehicle_text = _vehicle_text(vehicle)
+            vehicle_lines.append(f"[Index {i}]\n{vehicle_text}")
+        except Exception as e:
+            logger.warning('Error formatting vehicle %d: %s', i, e)
+            # Continue with next vehicle if formatting fails
+            continue
+
+    if not vehicle_lines:
+        raise ValueError('Could not format any vehicles for ranking')
 
     prompt = f"""You are a vehicle evaluation expert. Rank the following vehicles from best to worst based on:
 - Overall value for money
@@ -77,6 +97,14 @@ No markdown, no extra text."""
 
     try:
         client = _get_client()
+    except ImportError as e:
+        raise RuntimeError(f'Groq library not installed. Please install with: pip install groq') from e
+    except ValueError as e:
+        raise RuntimeError(f'GROQ_API_KEY not configured. {str(e)}') from e
+    except Exception as e:
+        raise RuntimeError(f'Failed to initialize Groq client: {str(e)}') from e
+
+    try:
         response = client.chat.completions.create(
             model=model,
             messages=[{'role': 'user', 'content': prompt}],
@@ -84,37 +112,60 @@ No markdown, no extra text."""
             max_tokens=512,
         )
         text = (response.choices[0].message.content or '').strip()
+        if not text:
+            raise ValueError('Empty response from API')
+        
         # Strip markdown code block if present
         if text.startswith('```'):
             lines = text.split('\n')
             text = '\n'.join(lines[1:-1] if lines[-1].strip() == '```' else lines[1:])
+        
         data = json.loads(text)
         ranked_indices = data.get('ranked_indices') or []
         
         if not isinstance(ranked_indices, list):
-            ranked_indices = []
+            raise ValueError(f'Invalid response format. Expected "ranked_indices" array, got {type(ranked_indices).__name__}')
         
         # Validate and filter indices
-        valid_indices = [int(x) for x in ranked_indices 
-                        if isinstance(x, (int, float)) and 0 <= int(x) < len(vehicles)][:10]
+        try:
+            valid_indices = [int(x) for x in ranked_indices 
+                            if isinstance(x, (int, float)) and 0 <= int(x) < len(vehicles)][:10]
+        except (ValueError, TypeError) as e:
+            logger.warning('Error processing ranked indices: %s', e)
+            valid_indices = []
         
         # If we don't have 10 valid indices, fill with remaining vehicles
-        used_indices = set(valid_indices)
-        while len(valid_indices) < 10 and len(valid_indices) < len(vehicles):
-            for i in range(len(vehicles)):
-                if i not in used_indices:
-                    valid_indices.append(i)
-                    used_indices.add(i)
-                    break
+        try:
+            used_indices = set(valid_indices)
+            while len(valid_indices) < 10 and len(valid_indices) < len(vehicles):
+                for i in range(len(vehicles)):
+                    if i not in used_indices:
+                        valid_indices.append(i)
+                        used_indices.add(i)
+                        break
+        except Exception as e:
+            logger.warning('Error filling valid indices: %s', e)
         
         # Return vehicles in ranked order
-        return [vehicles[i] for i in valid_indices[:10]]
+        try:
+            result = [vehicles[i] for i in valid_indices[:10]]
+            return result if result else vehicles[:10]
+        except Exception as e:
+            logger.warning('Error returning ranked vehicles: %s', e)
+            return vehicles[:10]
         
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning('LLM ranking JSON parse failed: %s', e)
-        # Fallback: return first 10 vehicles
-        return vehicles[:10]
+    except json.JSONDecodeError as e:
+        raise ValueError(f'Invalid JSON response from API: {str(e)}') from e
+    except ValueError as e:
+        raise ValueError(f'Ranking error: {str(e)}') from e
     except Exception as e:
-        logger.exception('LLM ranking failed: %s', e)
-        # Fallback: return first 10 vehicles
-        return vehicles[:10]
+        # Catch API errors (timeout, authentication, rate limit, etc.)
+        error_msg = str(e)
+        if 'authentication' in error_msg.lower() or 'unauthorized' in error_msg.lower():
+            raise RuntimeError(f'API authentication failed. Check your GROQ_API_KEY') from e
+        elif 'timeout' in error_msg.lower():
+            raise RuntimeError(f'API request timed out. Please try again') from e
+        elif 'rate' in error_msg.lower():
+            raise RuntimeError(f'API rate limit exceeded. Please wait before trying again') from e
+        else:
+            raise RuntimeError(f'API request failed: {error_msg}') from e

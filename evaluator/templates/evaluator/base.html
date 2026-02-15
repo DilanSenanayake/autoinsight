@@ -208,15 +208,28 @@
     }
     .badge-best { background: var(--success); color: var(--bg); }
     .badge-ai { background: var(--accent-dim); color: var(--accent-light); }
-    .messages { list-style: none; padding: 0; margin: 0 0 1rem 0; }
+    .messages { list-style: none; padding: 0; margin: 0 0 1.5rem 0; }
     .messages li {
-      padding: 0.85rem 1.1rem;
+      padding: 1rem 1.2rem;
       border-radius: var(--radius-sm);
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.75rem;
       font-weight: 500;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      border-left: 4px solid;
+      line-height: 1.5;
     }
-    .messages .warning { background: rgba(234, 179, 8, 0.15); border: 1px solid var(--gold); color: #fef08a; }
-    .messages .error { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; }
+    .messages .warning { 
+      background: rgba(234, 179, 8, 0.15); 
+      border-color: var(--gold);
+      color: #fef08a; 
+    }
+    .messages .error { 
+      background: rgba(239, 68, 68, 0.2); 
+      border-color: #ef4444;
+      color: #fca5a5;
+      font-weight: 600;
+    }
     .explanation-box {
       background: var(--bg);
       border: 1px solid var(--border);

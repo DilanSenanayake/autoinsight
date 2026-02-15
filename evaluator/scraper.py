@@ -31,9 +31,13 @@ SESSION.headers.update(REQUEST_HEADERS)
 
 def _slug(s) -> str:
     """Normalize segment for URL: lowercase, strip, replace spaces with hyphen."""
-    if not s or not str(s).strip():
+    try:
+        if not s or not str(s).strip():
+            return None
+        return str(s).strip().lower().replace(' ', '-')
+    except Exception as e:
+        logger.warning('Error slugifying %s: %s', s, e)
         return None
-    return str(s).strip().lower().replace(' ', '-')
 
 
 def _make_search_url(
@@ -50,53 +54,62 @@ def _make_search_url(
     Build Riyasewana search URL. Only non-null filters are added.
     When no filters: use /search (same as site pagination). With filters: /search/cars/make/model/location/year/price.
     """
-    has_filters = any((
-        make,
-        model,
-        location,
-        (min_year is not None and min_year > 0),
-        (max_year is not None and max_year > 0),
-        (min_price is not None and min_price >= 0),
-        (max_price is not None and max_price > 0),
-    ))
-    if not has_filters:
-        # Riyasewana pagination uses /search?page=N (see sample response)
-        url = urljoin(BASE_URL, '/search')
+    try:
+        has_filters = any((
+            make,
+            model,
+            location,
+            (min_year is not None and min_year > 0),
+            (max_year is not None and max_year > 0),
+            (min_price is not None and min_price >= 0),
+            (max_price is not None and max_price > 0),
+        ))
+        if not has_filters:
+            # Riyasewana pagination uses /search?page=N (see sample response)
+            url = urljoin(BASE_URL, '/search')
+            if page > 1:
+                url += f'?page={page}'
+            return url
+        path = '/search/cars'
+        make_s = _slug(make)
+        if make_s:
+            path += '/' + make_s
+        model_s = _slug(model)
+        if model_s:
+            path += '/' + model_s
+        location_s = _slug(location)
+        if location_s:
+            path += '/' + location_s
+        if min_year is not None and min_year > 0 or max_year is not None and max_year > 0:
+            year_min = int(min_year) if min_year is not None and min_year > 0 else 2000
+            year_max = int(max_year) if max_year is not None and max_year > 0 else datetime.date.today().year
+            path += f'/{year_min}-{year_max}'
+        if min_price is not None and min_price >= 0 or max_price is not None and max_price > 0:
+            price_min = int(min_price) if min_price is not None and min_price >= 0 else 0
+            price_max = int(max_price) if max_price is not None and max_price > 0 else 50_000_000
+            path += f'/price-{price_min}-{price_max}'
+        url = urljoin(BASE_URL, path.strip('/'))
         if page > 1:
             url += f'?page={page}'
         return url
-    path = '/search/cars'
-    make_s = _slug(make)
-    if make_s:
-        path += '/' + make_s
-    model_s = _slug(model)
-    if model_s:
-        path += '/' + model_s
-    location_s = _slug(location)
-    if location_s:
-        path += '/' + location_s
-    if min_year is not None and min_year > 0 or max_year is not None and max_year > 0:
-        year_min = int(min_year) if min_year is not None and min_year > 0 else 2000
-        year_max = int(max_year) if max_year is not None and max_year > 0 else datetime.date.today().year
-        path += f'/{year_min}-{year_max}'
-    if min_price is not None and min_price >= 0 or max_price is not None and max_price > 0:
-        price_min = int(min_price) if min_price is not None and min_price >= 0 else 0
-        price_max = int(max_price) if max_price is not None and max_price > 0 else 50_000_000
-        path += f'/price-{price_min}-{price_max}'
-    url = urljoin(BASE_URL, path.strip('/'))
-    if page > 1:
-        url += f'?page={page}'
-    return url
+    except Exception as e:
+        logger.exception('Error building search URL with filters make=%s, model=%s, location=%s: %s', make, model, location, e)
+        raise RuntimeError(f'Failed to build search URL: {str(e)}') from e
 
 
 def get_search_url(make=None, model=None, location=None, min_year=None, max_year=None, min_price=None, max_price=None):
     """Build the Riyasewana search URL for the given filters (page 1). For display/link on results."""
-    return _make_search_url(
-        make=make, model=model, location=location,
-        min_year=min_year, max_year=max_year,
-        min_price=min_price, max_price=max_price,
-        page=1,
-    )
+    try:
+        return _make_search_url(
+            make=make, model=model, location=location,
+            min_year=min_year, max_year=max_year,
+            min_price=min_price, max_price=max_price,
+            page=1,
+        )
+    except Exception as e:
+        logger.warning('Error building display search URL: %s', e)
+        # Return base search URL as fallback
+        return f'{BASE_URL}/search'
 
 
 def _extract_cards(soup):
@@ -104,9 +117,13 @@ def _extract_cards(soup):
     Extract vehicle listing cards from Riyasewana search results.
     Structure (from sample): <ul> with <li class="item round"> per listing.
     """
-    # Riyasewana uses li.item for each listing (inside #content ul)
-    cards = soup.select('li.item')
-    return cards
+    try:
+        # Riyasewana uses li.item for each listing (inside #content ul)
+        cards = soup.select('li.item')
+        return cards
+    except Exception as e:
+        logger.warning('Error extracting cards from soup: %s', e)
+        return []
 
 
 def _extract_link_from_card(card, base_url=BASE_URL):
@@ -114,12 +131,16 @@ def _extract_link_from_card(card, base_url=BASE_URL):
     Stage 1 only: extract detail URL and optional name from a listing card.
     Returns dict with url, name (or None if no link).
     """
-    link = card.select_one('h2.more a') or card.select_one('.imgbox a') or card.find('a', href=re.compile(r'/buy/'))
-    if not link or not link.get('href'):
+    try:
+        link = card.select_one('h2.more a') or card.select_one('.imgbox a') or card.find('a', href=re.compile(r'/buy/'))
+        if not link or not link.get('href'):
+            return None
+        url = urljoin(base_url, link['href']) if not link['href'].startswith('http') else link['href']
+        name = (link.get('title') or link.get_text(strip=True) or '')[:200]
+        return {'url': url, 'name': name}
+    except Exception as e:
+        logger.warning('Error extracting link from card: %s', e)
         return None
-    url = urljoin(base_url, link['href']) if not link['href'].startswith('http') else link['href']
-    name = (link.get('title') or link.get_text(strip=True) or '')[:200]
-    return {'url': url, 'name': name}
 
 
 def _stage2_fetch_detail_page(url):
@@ -131,8 +152,17 @@ def _stage2_fetch_detail_page(url):
         resp = SESSION.get(url, timeout=15, cookies=SESSION.cookies)
         resp.raise_for_status()
         return BeautifulSoup(resp.text, 'html.parser')
+    except requests.Timeout as e:
+        logger.warning('Timeout fetching detail page: %s', url)
+        return None
+    except requests.HTTPError as e:
+        logger.warning('HTTP %d error fetching detail page: %s', e.response.status_code, url)
+        return None
     except requests.RequestException as e:
-        logger.warning('Stage 2 fetch failed for %s: %s', url, e)
+        logger.warning('Request error fetching detail page %s: %s', url, e)
+        return None
+    except Exception as e:
+        logger.warning('Unexpected error parsing detail page %s: %s', url, e)
         return None
 
 
@@ -159,69 +189,86 @@ def _stage2_parse_detail(soup, url):
         'contact': '',
     }
     if not soup:
+        logger.debug('No soup provided for URL: %s', url)
         return vehicle
-    # Title from h1
-    h1 = soup.find('h1')
-    if h1:
-        vehicle['name'] = (h1.get_text(strip=True) or '')[:200]
+    
+    try:
+        # Title from h1
+        h1 = soup.find('h1')
+        if h1:
+            vehicle['name'] = (h1.get_text(strip=True) or '')[:200]
+    except Exception as e:
+        logger.debug('Error parsing title from %s: %s', url, e)
+
     # Table: each p.moreh is a label, next sibling td is the value
-    table = soup.find('table', class_='moret')
-    if not table:
-        return vehicle
-    for p in table.find_all('p', class_='moreh'):
-        label = (p.get_text() or '').strip()
-        parent_td = p.find_parent('td')
-        if not parent_td:
-            continue
-        next_td = parent_td.find_next_sibling('td')
-        if not next_td:
-            continue
-        value = (next_td.get_text(separator=' ', strip=True) or '').strip()
-        if not label:
-            continue
-        if label == 'Contact':
-            vehicle['contact'] = value
-        elif label == 'Price':
-            if value and re.search(r'[\d,]+', value):
-                try:
-                    vehicle['price'] = int(re.sub(r'[^\d]', '', value))
-                except ValueError:
-                    pass
-        elif label == 'Make':
-            vehicle['make'] = value
-        elif label == 'Model':
-            vehicle['model'] = value
-        elif label == 'YOM':
-            if value:
-                m = re.search(r'(\d{4})', value)
-                if m:
-                    try:
-                        vehicle['year'] = int(m.group(1))
-                    except ValueError:
-                        pass
-        elif label == 'Mileage (km)':
-            if value and value != '-' and re.search(r'\d+', value):
-                try:
-                    vehicle['mileage'] = int(re.sub(r'[^\d]', '', value))
-                except ValueError:
-                    pass
-        elif label == 'Gear':
-            vehicle['gear'] = value
-        elif label == 'Fuel Type':
-            vehicle['fuel_type'] = value
-        elif label == 'Options':
-            vehicle['options'] = value[:500] if value else ''
-        elif label == 'Engine (cc)':
-            vehicle['engine_cc'] = value.strip() if value else ''
-        elif label == 'Details':
-            vehicle['details'] = value[:3000] if value else ''
-    vehicle['description'] = (vehicle.get('details') or '')[:1500]
-    parts = [vehicle['name'], vehicle.get('make'), vehicle.get('model'), vehicle.get('contact')]
-    if vehicle.get('price'):
-        parts.append('Rs. {}'.format(vehicle['price']))
-    if vehicle.get('mileage'):
-        parts.append('{} km'.format(vehicle['mileage']))
-    vehicle['raw_text'] = ' '.join(str(p) for p in parts if p)
+    try:
+        table = soup.find('table', class_='moret')
+        if not table:
+            logger.debug('No detail table found for %s', url)
+            return vehicle
+        
+        for p in table.find_all('p', class_='moreh'):
+            try:
+                label = (p.get_text() or '').strip()
+                parent_td = p.find_parent('td')
+                if not parent_td:
+                    continue
+                next_td = parent_td.find_next_sibling('td')
+                if not next_td:
+                    continue
+                value = (next_td.get_text(separator=' ', strip=True) or '').strip()
+                if not label:
+                    continue
+                if label == 'Contact':
+                    vehicle['contact'] = value
+                elif label == 'Price':
+                    if value and re.search(r'[\d,]+', value):
+                        try:
+                            vehicle['price'] = int(re.sub(r'[^\d]', '', value))
+                        except ValueError:
+                            logger.debug('Could not parse price: %s', value)
+                elif label == 'Make':
+                    vehicle['make'] = value
+                elif label == 'Model':
+                    vehicle['model'] = value
+                elif label == 'YOM':
+                    if value:
+                        m = re.search(r'(\d{4})', value)
+                        if m:
+                            try:
+                                vehicle['year'] = int(m.group(1))
+                            except ValueError:
+                                logger.debug('Could not parse year: %s', value)
+                elif label == 'Mileage (km)':
+                    if value and value != '-' and re.search(r'\d+', value):
+                        try:
+                            vehicle['mileage'] = int(re.sub(r'[^\d]', '', value))
+                        except ValueError:
+                            logger.debug('Could not parse mileage: %s', value)
+                elif label == 'Gear':
+                    vehicle['gear'] = value
+                elif label == 'Fuel Type':
+                    vehicle['fuel_type'] = value
+                elif label == 'Options':
+                    vehicle['options'] = value[:500] if value else ''
+                elif label == 'Engine (cc)':
+                    vehicle['engine_cc'] = value.strip() if value else ''
+                elif label == 'Details':
+                    vehicle['details'] = value[:3000] if value else ''
+            except Exception as e:
+                logger.debug('Error parsing field from %s: %s', url, e)
+                continue
+        
+        vehicle['description'] = (vehicle.get('details') or '')[:1500]
+        parts = [vehicle['name'], vehicle.get('make'), vehicle.get('model'), vehicle.get('contact')]
+        if vehicle.get('price'):
+            parts.append('Rs. {}'.format(vehicle['price']))
+        if vehicle.get('mileage'):
+            parts.append('{} km'.format(vehicle['mileage']))
+        vehicle['raw_text'] = ' '.join(str(p) for p in parts if p)
+    except Exception as e:
+        logger.warning('Error parsing vehicle details from %s: %s', url, e)
+    
     return vehicle
 
 
@@ -230,19 +277,36 @@ def _stage2_collect_vehicles(vehicle_links, limit=2):
     Stage 2: for each of the first `limit` entries in vehicle_links, fetch the detail page
     and parse it into a vehicle dict. Returns list of vehicle dicts.
     """
+    if not vehicle_links:
+        return []
+    
     results = []
+    errors = []
+    
     for i, entry in enumerate(vehicle_links):
         if i >= limit:
             break
         url = entry.get('url') or ''
         name_fallback = entry.get('name') or ''
         if not url:
+            logger.debug('Skipping entry %d: no URL', i)
             continue
-        soup = _stage2_fetch_detail_page(url)
-        vehicle = _stage2_parse_detail(soup, url)
-        if not vehicle.get('name') and name_fallback:
-            vehicle['name'] = name_fallback
-        results.append(vehicle)
+        
+        try:
+            soup = _stage2_fetch_detail_page(url)
+            vehicle = _stage2_parse_detail(soup, url)
+            if not vehicle.get('name') and name_fallback:
+                vehicle['name'] = name_fallback
+            results.append(vehicle)
+        except Exception as e:
+            error_msg = f'Failed to collect vehicle {i} ({name_fallback or url}): {str(e)}'
+            logger.warning(error_msg)
+            errors.append(error_msg)
+            continue
+    
+    if errors and not results:
+        logger.warning('Stage 2 collection errors: %s', '; '.join(errors[:3]))
+    
     return results
 
 
@@ -263,46 +327,95 @@ def fetch_listings(
 
     Returns:
         List of dicts with keys: name, url, price, mileage, year, make, model, gear, fuel_type, options, engine_cc, details, contact, description, raw_text.
+    
+    Raises:
+        Exception: If network request fails or page parsing fails
     """
     MAX_RESULTS = 20
+    
     # Visit homepage first to get cookies
     try:
         SESSION.get(BASE_URL, timeout=10, cookies=SESSION.cookies)
-    except requests.RequestException:
-        pass
+    except requests.Timeout:
+        raise RuntimeError(f'Timeout while connecting to {BASE_URL}. Website may be slow or unreachable.')
+    except requests.ConnectionError:
+        raise RuntimeError(f'Cannot connect to {BASE_URL}. Check your internet connection or website may be down.')
+    except requests.RequestException as e:
+        raise RuntimeError(f'Error reaching {BASE_URL}: {str(e)}')
 
     # ---------- Stage 1: get vehicle list (links only) – all results up to MAX_RESULTS ----------
     vehicle_links = []
+    stage1_errors = []
+    
     for page in range(1, max_pages + 1):
         if len(vehicle_links) >= MAX_RESULTS:
             break
-        search_url = _make_search_url(
-            make=make,
-            model=model,
-            location=location,
-            min_year=min_year,
-            max_year=max_year,
-            min_price=min_price,
-            max_price=max_price,
-            page=page,
-        )
         try:
+            search_url = _make_search_url(
+                make=make,
+                model=model,
+                location=location,
+                min_year=min_year,
+                max_year=max_year,
+                min_price=min_price,
+                max_price=max_price,
+                page=page,
+            )
             resp = SESSION.get(search_url, timeout=15, cookies=SESSION.cookies)
             resp.raise_for_status()
-        except requests.RequestException as e:
-            logger.warning('Stage 1 fetch failed for %s: %s', search_url, e)
+        except requests.Timeout:
+            page_error = f'Timeout on page {page}'
+            logger.warning(page_error)
+            stage1_errors.append(page_error)
             continue
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        cards = _extract_cards(soup)
-        for card in cards:
-            if len(vehicle_links) >= MAX_RESULTS:
+        except requests.HTTPError as e:
+            page_error = f'HTTP {e.response.status_code} on page {page}'
+            logger.warning(page_error)
+            stage1_errors.append(page_error)
+            if e.response.status_code == 403:
+                raise RuntimeError(f'Access denied (403) by Riyasewana. Your IP may be blocked or the site blocked the scraper.')
+            continue
+        except requests.ConnectionError as e:
+            page_error = f'Connection error on page {page}'
+            logger.warning(page_error)
+            stage1_errors.append(page_error)
+            continue
+        except requests.RequestException as e:
+            page_error = f'Request error on page {page}: {str(e)}'
+            logger.warning(page_error)
+            stage1_errors.append(page_error)
+            continue
+        
+        try:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            cards = _extract_cards(soup)
+            if not cards:
+                logger.info('No cards found on page %d', page)
                 break
-            entry = _extract_link_from_card(card)
-            if entry and entry.get('url'):
-                vehicle_links.append(entry)
-        if not cards:
-            break
+            
+            for card in cards:
+                if len(vehicle_links) >= MAX_RESULTS:
+                    break
+                entry = _extract_link_from_card(card)
+                if entry and entry.get('url'):
+                    vehicle_links.append(entry)
+        except Exception as e:
+            page_error = f'Error parsing page {page}: {str(e)}'
+            logger.exception(page_error)
+            stage1_errors.append(page_error)
+            continue
+
+    if not vehicle_links:
+        if stage1_errors:
+            error_summary = '. '.join(stage1_errors[:3])
+            raise RuntimeError(f'No vehicles found. Fetch errors: {error_summary}')
+        else:
+            raise RuntimeError(f'No vehicles found matching filters for "{make or "any"}" {model or "model"} {location or "location"}')
 
     # ---------- Stage 2: fetch each vehicle's detail page and collect full data (all stage 1 results) ----------
     all_listings = _stage2_collect_vehicles(vehicle_links, limit=MAX_RESULTS)
+    
+    if not all_listings:
+        raise RuntimeError(f'Found {len(vehicle_links)} vehicle links but failed to fetch detail pages. Website content may have changed.')
+    
     return all_listings
