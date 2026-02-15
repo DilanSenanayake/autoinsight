@@ -2,10 +2,18 @@
 {% block title %}Search – AutoInsight{% endblock %}
 
 {% block content %}
+  <!-- Loading spinner -->
+  <div id="loading-overlay" style="display:none;">
+    <div class="loading-spinner">
+      <div class="spinner"></div>
+      <p>Ranking vehicles with AI...</p>
+    </div>
+  </div>
+
   <div class="card">
     <h2>Search filters</h2>
     <p class="muted" style="margin-bottom:1rem;">Set your criteria. We fetch vehicles from Riyasewana, then <strong>rank them using AI</strong> (value for money, condition, features, ownership experience, maintenance) and show the Top 10 with the best picks highlighted.</p>
-    <form method="post" action="{% url 'evaluator:index' %}">
+    <form method="post" action="{% url 'evaluator:index' %}" id="search-form">
       {% csrf_token %}
       <div class="form-grid">
         <div class="form-section">
@@ -81,5 +89,57 @@
     }
     .form-actions { margin: 1.5rem 0 0 0; }
     .form-actions button { min-width: 160px; }
+
+    /* Loading spinner styles */
+    #loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(12, 15, 20, 0.85);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .loading-spinner {
+      text-align: center;
+    }
+    .spinner {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 1.5rem;
+      border: 4px solid var(--border);
+      border-top: 4px solid var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .loading-spinner p {
+      font-size: 1.1rem;
+      color: var(--text-soft);
+      margin: 0;
+    }
   </style>
+{% endblock %}
+
+{% block extra_js %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.getElementById('search-form');
+      const loadingOverlay = document.getElementById('loading-overlay');
+      
+      if (form) {
+        form.addEventListener('submit', function(e) {
+          // Show loading overlay when form is submitted
+          loadingOverlay.style.display = 'flex';
+        });
+      }
+    });
+  </script>
 {% endblock %}
