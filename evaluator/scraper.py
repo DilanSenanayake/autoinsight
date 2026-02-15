@@ -305,7 +305,7 @@ def _stage2_collect_vehicles(vehicle_links, limit=2):
             
             # Add small delay between detail page fetches to avoid rate limiting
             if i < len(vehicle_links) - 1:  # Don't delay after last vehicle
-                time.sleep(0.5)  # 0.5 seconds between detail pages
+                time.sleep(0.3)  # 0.3 seconds between detail pages
         except Exception as e:
             error_msg = f'Failed to collect vehicle {i} ({name_fallback or url}): {str(e)}'
             logger.warning(error_msg)
@@ -432,7 +432,7 @@ def fetch_listings(
             
             # Add delay between page requests to avoid rate limiting
             if page < max_pages and len(vehicle_links) < MAX_RESULTS:
-                delay = 2  # 2 seconds between pages
+                delay = 1  # 1 second between pages
                 logger.debug('Waiting %d seconds before next page to avoid rate limiting...', delay)
                 time.sleep(delay)
         except Exception as e:
